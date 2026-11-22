@@ -21,28 +21,28 @@ The thing being demonstrated is the orchestration: parallel specialists, a write
 
 ## Design
 
-Two runtimes share one process. They do not share a request.
+The process hosts two isolated control planes. The valuation plane is deterministic and idempotent under a sixty-second cache. The research plane is an on-demand directed graph. A portfolio refresh never constructs a chat client, so market data and model inference cannot be conflated.
 
 ```mermaid
 flowchart LR
   browser[Browser]
-  portfolio["GET /api/portfolio"]
-  status["GET /api/research/status"]
-  research["POST /api/research"]
-  yahoo[Yahoo_FX_CPI]
-  steps[Step_list]
-  graph[LangGraph]
-  context[Context_Python]
-  specialists[Four_specialists]
-  writer[Writer]
+  portfolioRoute["GET /api/portfolio"]
+  statusRoute["GET /api/research/status"]
+  researchRoute["POST /api/research"]
+  marketData["Yahoo, FX, CPI"]
+  stepLedger[Step ledger]
+  orchestration[LangGraph runtime]
+  contextNode[Context node]
+  specialistFanout[Specialist fan-out]
+  writerNode[Writer]
 
-  browser --> portfolio --> yahoo
-  browser --> status --> steps
-  browser --> research --> graph
-  graph --> context --> specialists --> writer
+  browser --> portfolioRoute --> marketData
+  browser --> statusRoute --> stepLedger
+  browser --> researchRoute --> orchestration
+  orchestration --> contextNode --> specialistFanout --> writerNode
 ```
 
-`app.py` is a `ThreadingHTTPServer` on `127.0.0.1:8765`. It does not import LangChain. `POST /api/research` calls `research.graph.handle_request`. Price refresh cannot start a model run, because the portfolio route never builds a chat client.
+`app.py` is a `ThreadingHTTPServer` bound to `127.0.0.1:8765`. It does not import LangChain. The research route delegates to `research.graph.handle_request`, which is the sole ingress into the agent runtime.
 
 | Piece | Choice | Why |
 | --- | --- | --- |
@@ -58,31 +58,31 @@ Flag rule, all of it in code: look-through weight above 8%, or a top-three direc
 
 ## Orchestration
 
-This is the part the project is built to show.
+The orchestration is the artifact this repository is meant to exhibit: a closed topology, not a supervisor model improvising the next worker.
 
-LangChain owns a single agent. LangGraph owns the team. There is no `create_agent` and no supervisor model choosing the next worker. The edges are the design.
+LangChain is the intra-agent substrate: messages, tool schemas, and the invocation loop. LangGraph is the inter-agent topology. There is no `create_agent` and no router LLM. Admission to the writer is a structural fan-in. A specialist that has not finished cannot be bypassed, and no specialist can read a peer memo, because those fields are not in its input.
 
 ```mermaid
 flowchart TB
   startNode([START])
-  context[Context]
-  financial[Financial_statements]
-  news[News_and_market]
-  competitive[Competitive_intelligence]
-  risk[Risk]
-  writer[Writer]
+  contextNode[Context]
+  financialNode[Financial statements]
+  newsNode[News and market]
+  competitiveNode[Competitive intelligence]
+  riskNode[Risk]
+  writerNode[Writer]
   endNode([END])
 
-  startNode --> context
-  context --> financial
-  context --> news
-  context --> competitive
-  context --> risk
-  financial --> writer
-  news --> writer
-  competitive --> writer
-  risk --> writer
-  writer --> endNode
+  startNode --> contextNode
+  contextNode --> financialNode
+  contextNode --> newsNode
+  contextNode --> competitiveNode
+  contextNode --> riskNode
+  financialNode --> writerNode
+  newsNode --> writerNode
+  competitiveNode --> writerNode
+  riskNode --> writerNode
+  writerNode --> endNode
 ```
 
 `ResearchState` is a `TypedDict`. Memo fields are plain strings. `trace` is `Annotated[list, operator.add]`, so the four parallel nodes append to the trace instead of overwriting it. The writer edge is a fan-in:
