@@ -49,6 +49,8 @@ CRYPTO_SHOCK = -0.50
 
 _cache_lock = threading.Lock()
 _cache: dict = {"at": 0.0, "payload": None}
+# Histories and fundamentals for research tools. Not part of the dashboard JSON.
+SYMBOL_BOOKS: dict[str, dict] = {}
 
 
 def ssl_context():
@@ -310,6 +312,7 @@ def fetch_symbol(holding: dict) -> dict:
             profile["industry"] = asset_profile.get("industryDisp") or asset_profile.get("industry")
             profile["category"] = fund_profile.get("categoryName")
             profile["dividend"] = _raw(detail.get("trailingAnnualDividendRate"))
+            profile["fundamentals"] = _fundamentals(detail, stats)
             if profile["dividend"] is None and price:
                 dividend_yield = (
                     _raw(detail.get("yield"))
@@ -371,6 +374,7 @@ def fetch_symbol(holding: dict) -> dict:
         "constituents": profile["holdings"],
         "history": history,
         "sources": holding["sources"],
+        "fundamentals": profile["fundamentals"],
     }
 
 
@@ -384,6 +388,45 @@ def _annualized(history: list[dict]) -> float | None:
     if days < MIN_CAGR_DAYS or start["close"] <= 0:
         return None
     return (end["close"] / start["close"]) ** (365.25 / days) - 1
+
+
+def _metric(node):
+    value = _raw(node)
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fundamentals(detail: dict, stats: dict) -> dict:
+    """Keep only figures Yahoo actually returned. Missing fields stay absent."""
+    found = {}
+    pairs = (
+        ("trailingPe", stats.get("trailingPE") if stats.get("trailingPE") is not None else detail.get("trailingPE")),
+        ("profitMargin", stats.get("profitMargins")),
+        ("revenueGrowth", stats.get("revenueGrowth")),
+        ("debtToEquity", stats.get("debtToEquity")),
+    )
+    for key, node in pairs:
+        value = _metric(node)
+        if value is not None:
+            found[key] = value
+    return found
+
+
+def _three_month(history: list[dict], price) -> tuple[float | None, float | None]:
+    if not history or not price:
+        return None, None
+    end = datetime.fromisoformat(history[-1]["date"])
+    cutoff = (end - timedelta(days=LOOKBACK_DAYS)).date().isoformat()
+    window = [point for point in history if point["date"] >= cutoff]
+    if not window or not window[0]["close"]:
+        return None, None
+    change = float(price) / float(window[0]["close"]) - 1
+    high = max(float(point["close"]) for point in window)
+    return change, high
 
 
 def _lookthrough(quotes: list[dict], total: float) -> dict:
@@ -624,19 +667,28 @@ def build_payload(force: bool = False) -> dict:
             item["projectionRate"] = min(RATE_CAP, max(RATE_FLOOR, tempered))
             item["rateBasis"] = "historical" if item["projectionRate"] == tempered else "capped"
 
-    lookthrough = _lookthrough(quotes, total)
-    series = _series(quotes, LOOKBACK_DAYS)
     for item in quotes:
-        item.pop("history", None)
-        item.pop("constituents", None)
-        item.pop("costTotal", None)
+        change_3m, high_3m = _three_month(item.get("history") or [], item.get("price"))
+        item["change3m"] = change_3m
+        item["high3m"] = high_3m
+    _stash_books(quotes)
+    look_full = _lookthrough(quotes, total)
+    from research.flags import select_flags
 
+    flags = select_flags({"holdings": quotes, "lookthrough": look_full})
+    lookthrough = {**look_full, "rows": look_full["rows"][:18]}
+    series = _series(quotes, LOOKBACK_DAYS)
     if series:
         series[-1]["value"] = total
     start_value = series[0]["value"] if series else None
     end_value = series[-1]["value"] if series else None
     period_change = None if start_value is None else end_value - start_value
     period_pct = None if not start_value else period_change / start_value * 100
+    for item in quotes:
+        item.pop("history", None)
+        item.pop("constituents", None)
+        item.pop("costTotal", None)
+        item.pop("fundamentals", None)
 
     annual_dividend = sum(
         item["annualDividendPerShare"] * item["shares"] for item in quotes if item["type"] != "crypto"
@@ -689,6 +741,7 @@ def build_payload(force: bool = False) -> dict:
             "cryptoLossShare": (crypto_loss / stress_loss) if stress_loss else 0.0,
         },
         "lookthrough": lookthrough,
+        "flags": flags,
         "news": _headlines([item["yahoo"] for item in quotes if item["type"] != "crypto" and not item["isEtf"]]),
         "fx": _fx_rates(),
         "totals": {
@@ -743,6 +796,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urllib.parse.urlparse(self.path)
+        if path.path == "/api/research/status":
+            from research.graph import progress
+
+            self._send(200, json.dumps(progress()).encode(), "application/json")
+            return
+
         if path.path == "/api/portfolio":
             force = "refresh=1" in (path.query or "")
             try:
@@ -764,19 +823,66 @@ class Handler(BaseHTTPRequestHandler):
 
         self._send(404, b"Not found", "text/plain; charset=utf-8")
 
+    def do_POST(self):
+        path = urllib.parse.urlparse(self.path)
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length else b""
+        if path.path != "/api/research":
+            self._send(404, b"Not found", "text/plain; charset=utf-8")
+            return
+        try:
+            from research.graph import handle_request
+
+            code, payload = handle_request(raw)
+        except Exception as error:
+            code, payload = 500, {"error": str(error)}
+        self._send(code, json.dumps(payload).encode(), "application/json")
+
+
+def _stash_books(quotes: list[dict]) -> None:
+    SYMBOL_BOOKS.clear()
+    for item in quotes:
+        SYMBOL_BOOKS[item["symbol"]] = {
+            "symbol": item["symbol"],
+            "yahoo": item.get("yahoo") or item["symbol"],
+            "name": item.get("name"),
+            "shares": item.get("shares"),
+            "price": item.get("price"),
+            "type": item.get("type"),
+            "isEtf": item.get("isEtf"),
+            "history": list(item.get("history") or []),
+            "fundamentals": dict(item.get("fundamentals") or {}),
+        }
+
+
+def load_env() -> None:
+    path = ROOT / ".env"
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
 
 def main():
+    load_env()
+    from research.agents import load_deepseek_key
+
+    load_deepseek_key()
     DATA_DIR.mkdir(exist_ok=True)
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     url = f"http://{HOST}:{PORT}/"
     print(f"Portfolio tracker reading CSVs from {DATA_DIR}", flush=True)
     print(f"Open {url}", flush=True)
-    if not os.environ.get("SKIP_BROWSER"):
-        threading.Timer(0.6, lambda: webbrowser.open(url)).start()
+    if os.environ.get("SKIP_BROWSER") != "1":
+        webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopped.")
+        print("\nStopped.", flush=True)
         server.server_close()
 
 

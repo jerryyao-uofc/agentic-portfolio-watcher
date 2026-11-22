@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Portfolio Overview</title>
+  <title>Agentic Portfolio Watcher</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,520;9..144,640&family=Outfit:wght@380;500;640&display=swap" rel="stylesheet" />
@@ -76,6 +76,41 @@
     .sub { margin-top: 4px; color: var(--muted); font-size: 14px; }
     .up { color: var(--green); }
     .down { color: var(--red); }
+    #research .error { color: var(--red); margin: 0 0 12px; }
+    .report-backdrop {
+      position: fixed; inset: 0; background: rgba(29, 26, 22, 0.45);
+      z-index: 20; display: flex; align-items: flex-start; justify-content: center;
+      padding: 48px 16px; overflow: auto;
+    }
+    .report-backdrop[hidden] { display: none; }
+    .report-sheet {
+      width: min(760px, 100%); background: var(--card); border-radius: 22px;
+      box-shadow: var(--shadow); padding: 28px 32px 36px; margin: auto;
+    }
+    .report-sheet header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+    .report-sheet h2 { margin: 0; font-size: 34px; }
+    .report-body { margin-top: 18px; }
+    .report-body h1, .report-body h2, .report-body h3 { font-family: Fraunces, serif; font-weight: 520; margin: 22px 0 8px; }
+    .report-body h1 { font-size: 28px; }
+    .report-body h2 { font-size: 22px; }
+    .report-body h3 { font-size: 18px; }
+    .report-body p { margin: 0 0 12px; line-height: 1.55; }
+    .report-body ul, .report-body ol { margin: 0 0 14px; padding-left: 22px; }
+    .report-body li { margin: 0 0 6px; line-height: 1.5; }
+    .report-body strong { font-weight: 650; }
+    .report-body table { width: 100%; border-collapse: collapse; margin: 8px 0 18px; font-size: 15px; }
+    .report-body th, .report-body td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .report-body th { color: var(--muted); font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; }
+    .report-body .chart { margin: 8px 0 18px; }
+    #research-status { color: var(--muted); min-height: 1.2em; }
+    .team { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+    .team li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+    .team .waiting { color: var(--muted); }
+    .team .working { font-weight: 640; }
+    .team .working::after { content: ""; display: inline-block; width: 8px; height: 8px; margin-left: 8px; border-radius: 50%; background: #1d1a16; animation: pulse 1s ease-in-out infinite; }
+    .team .done { color: var(--green); }
+    @keyframes pulse { 50% { opacity: 0.25; } }
+    .flag-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
     section { margin: 0 0 22px; }
     .section-head { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; margin-bottom: 12px; }
     .section-head p { margin: 0; color: var(--muted); flex: 1; min-width: 0; text-align: right; }
@@ -121,8 +156,8 @@
 <body>
   <header>
     <div>
-      <h1>Portfolio Overview</h1>
-      <p class="lede">Live prices for every CSV in the data folder. Green is up, red is down.</p>
+      <h1>Agentic Portfolio Watcher</h1>
+      <p class="lede">Your portfolio, with live prices. Green is up, red is down. Agentic research looks at the holdings that may be near a selling point.</p>
       <div class="files" id="files"></div>
     </div>
     <div class="toolbar">
@@ -143,6 +178,7 @@
       <a href="#mix">ETF and industry</a>
       <a href="#news">News</a>
       <a href="#holdings">Holdings</a>
+      <a href="#research">Agentic research</a>
       <a href="#overlap">Look-through</a>
       <a href="#outlook">Outlook</a>
     </nav>
@@ -204,10 +240,40 @@
     <section id="holdings">
       <div class="section-head">
         <h2>Holdings</h2>
-        <p>Same prices as the charts above.</p>
+        <p>Every position in your portfolio, at the same prices as the charts.</p>
       </div>
       <div class="card" style="overflow-x:auto"><table id="holdings-table"></table></div>
     </section>
+
+    <section id="research">
+      <div class="section-head">
+        <h2>Agentic research</h2>
+        <p>Your agents read one holding and suggest whether to sell part of it or leave it alone.</p>
+      </div>
+      <div class="card">
+        <div id="research-flags"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button id="research-shortlist" type="button">Review the shortlist</button>
+        </div>
+        <p id="research-status"></p>
+        <ol id="research-team" class="team" hidden></ol>
+        <p id="research-error" class="error"></p>
+        <div id="research-results"></div>
+      </div>
+    </section>
+    <div id="report-backdrop" class="report-backdrop" hidden>
+      <div class="report-sheet" role="dialog" aria-modal="true" aria-labelledby="report-title">
+        <header>
+          <div>
+            <div class="label">Your note</div>
+            <h2 id="report-title"></h2>
+            <p class="sub" id="report-reasons"></p>
+          </div>
+          <button id="report-close" type="button">Close</button>
+        </header>
+        <div id="report-body" class="report-body"></div>
+      </div>
+    </div>
 
     <section id="overlap">
       <div class="section-head">
@@ -335,7 +401,9 @@
         <polygon points="${area}" fill="${color}" opacity="0.12"></polygon>
         <polyline points="${line}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"></polyline>`);
       (markers || []).forEach(marker => {
-        const index = points.findIndex(point => point.year === marker);
+        const index = typeof marker === "number"
+          ? points.findIndex(point => point.year === marker)
+          : points.findIndex(point => point.date === marker);
         if (index < 0) return;
         svg.insertAdjacentHTML("beforeend", `<circle cx="${x(index)}" cy="${y(points[index].value)}" r="5" fill="${color}"></circle>`);
       });
@@ -647,12 +715,251 @@
     }
 
     let latest = null;
+    let researchResult = null;
+    let researchRunning = false;
+
+    function paintFlags(flags) {
+      const host = document.getElementById("research-flags");
+      const rows = flags || [];
+      if (!rows.length) {
+        host.innerHTML = `<p class="note">None of your direct stocks are flagged right now. ETFs and crypto stay out of agentic research.</p>`;
+      } else {
+        host.innerHTML = rows.map(flag => `
+          <div class="flag-row">
+            <div><strong>${escapeHtml(flag.symbol)}</strong> <span class="sub">${escapeHtml((flag.reasons || []).join("; "))}</span></div>
+            <button type="button" class="research-one" data-symbol="${escapeAttr(flag.symbol)}">Ask about ${escapeHtml(flag.symbol)}</button>
+          </div>`).join("");
+      }
+      document.getElementById("research-shortlist").disabled = researchRunning || !rows.length;
+      document.querySelectorAll(".research-one").forEach(button => { button.disabled = researchRunning; });
+    }
+
+    function splitTableRow(line) {
+      return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(cell => cell.trim());
+    }
+
+    function isTableRule(line) {
+      return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+    }
+
+    function inlineMemo(text) {
+      return escapeHtml(text)
+        .replace(/`([^`]+)`/g, "<code>$1</code>")
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/(^|[\s(])\*([^*]+)\*(?=[\s).,;:]|$)/g, "$1<em>$2</em>");
+    }
+
+    function renderMemo(markdown) {
+      const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+      const html = [];
+      let index = 0;
+      while (index < lines.length) {
+        const line = lines[index];
+        if (!line.trim()) {
+          index += 1;
+          continue;
+        }
+        if (line.trim().startsWith("|") && index + 1 < lines.length && isTableRule(lines[index + 1])) {
+          const header = splitTableRow(line);
+          index += 2;
+          const rows = [];
+          while (index < lines.length && lines[index].trim().startsWith("|")) {
+            rows.push(splitTableRow(lines[index]));
+            index += 1;
+          }
+          html.push(
+            `<table><thead><tr>${header.map(cell => `<th>${inlineMemo(cell)}</th>`).join("")}</tr></thead><tbody>${
+              rows.map(row => `<tr>${row.map(cell => `<td>${inlineMemo(cell)}</td>`).join("")}</tr>`).join("")
+            }</tbody></table>`
+          );
+          continue;
+        }
+        const heading = /^(#{1,3})\s+(.*)$/.exec(line.trim());
+        if (heading) {
+          const level = heading[1].length;
+          html.push(`<h${level}>${inlineMemo(heading[2])}</h${level}>`);
+          index += 1;
+          continue;
+        }
+        if (/^\s*[-*]\s+/.test(line)) {
+          const items = [];
+          while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) {
+            items.push(lines[index].replace(/^\s*[-*]\s+/, ""));
+            index += 1;
+          }
+          html.push(`<ul>${items.map(item => `<li>${inlineMemo(item)}</li>`).join("")}</ul>`);
+          continue;
+        }
+        if (/^\s*\d+\.\s+/.test(line)) {
+          const items = [];
+          while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index])) {
+            items.push(lines[index].replace(/^\s*\d+\.\s+/, ""));
+            index += 1;
+          }
+          html.push(`<ol>${items.map(item => `<li>${inlineMemo(item)}</li>`).join("")}</ol>`);
+          continue;
+        }
+        const paragraph = [line.trim()];
+        index += 1;
+        while (
+          index < lines.length
+          && lines[index].trim()
+          && !lines[index].trim().startsWith("|")
+          && !/^#{1,3}\s/.test(lines[index].trim())
+          && !/^\s*[-*]\s+/.test(lines[index])
+          && !/^\s*\d+\.\s+/.test(lines[index])
+        ) {
+          paragraph.push(lines[index].trim());
+          index += 1;
+        }
+        html.push(`<p>${inlineMemo(paragraph.join(" "))}</p>`);
+      }
+      return html.join("");
+    }
+
+    function openReport(runIndex) {
+      const run = (researchResult && researchResult.runs || [])[runIndex];
+      if (!run) return;
+      document.getElementById("report-title").textContent = run.symbol;
+      document.getElementById("report-reasons").textContent = (run.reasons || []).join("; ");
+      const charts = (run.charts || []).map((spec, index) => `
+        <h3>${escapeHtml(spec.title || "Chart")}</h3>
+        <svg class="chart research-chart" data-run="${runIndex}" data-chart="${index}" role="img"></svg>
+        ${spec.portfolio ? `<svg class="chart research-portfolio" data-run="${runIndex}" data-chart="${index}" role="img"></svg>` : ""}
+      `).join("");
+      document.getElementById("report-body").innerHTML = `${renderMemo(run.writer || "")}${charts}`;
+      document.getElementById("report-backdrop").hidden = false;
+      drawResearchCharts();
+    }
+
+    function closeReport() {
+      document.getElementById("report-backdrop").hidden = true;
+    }
+
+    function paintResearch(result) {
+      const host = document.getElementById("research-results");
+      const runs = (result && result.runs) || [];
+      if (!runs.length) {
+        host.innerHTML = result && result.note ? `<p class="note">${escapeHtml(result.note)}</p>` : "";
+        return;
+      }
+      host.innerHTML = runs.map((run, runIndex) => `
+        <div class="flag-row">
+          <div><strong>${escapeHtml(run.symbol)}</strong> <span class="sub">Your note is ready</span></div>
+          <button type="button" class="open-report" data-run="${runIndex}">Open ${escapeHtml(run.symbol)}</button>
+        </div>`).join("");
+    }
+
+    function drawResearchCharts() {
+      if (!researchResult) return;
+      (researchResult.runs || []).forEach((run, runIndex) => {
+        (run.charts || []).forEach((spec, index) => {
+          const price = document.querySelector(`svg.research-chart[data-run="${runIndex}"][data-chart="${index}"]`);
+          if (price) {
+            const points = (spec.dates || []).map((date, point) => ({ date, value: spec.closes[point] }));
+            lineChart(price, points, (spec.markers || []).map(marker => marker.date));
+          }
+          const book = document.querySelector(`svg.research-portfolio[data-run="${runIndex}"][data-chart="${index}"]`);
+          if (book && spec.portfolio) {
+            const points = (spec.portfolio.dates || []).map((date, point) => ({ date, value: spec.portfolio.values[point] }));
+            lineChart(book, points, []);
+          }
+        });
+      });
+    }
+
+    let researchPoll = null;
+
+    function paintTeam(status) {
+      const list = document.getElementById("research-team");
+      const steps = (status && status.steps) || [];
+      if (!status || !status.active || !steps.length) {
+        list.hidden = true;
+        list.innerHTML = "";
+        return;
+      }
+      const words = { waiting: "Waiting", working: "Working", done: "Done" };
+      list.hidden = false;
+      list.innerHTML = steps.map(step => `
+        <li class="${escapeAttr(step.state)}">
+          <span>${escapeHtml(step.label)}</span>
+          <span>${words[step.state] || ""}</span>
+        </li>`).join("");
+      const live = steps.filter(step => step.state === "working").map(step => step.label);
+      document.getElementById("research-status").textContent = live.length
+        ? `${status.symbol}: your agents are on ${live.join(", ")}`
+        : `${status.symbol}: your agents are starting`;
+    }
+
+    function watchResearch() {
+      if (researchPoll) clearInterval(researchPoll);
+      researchPoll = setInterval(async () => {
+        try {
+          const response = await fetch("/api/research/status");
+          if (!response.ok) return;
+          paintTeam(await response.json());
+        } catch (error) {
+          /* The status poll can fail while the report request is still running. */
+        }
+      }, 700);
+    }
+
+    async function runResearch(body) {
+      if (researchRunning) return;
+      researchRunning = true;
+      document.getElementById("research-error").textContent = "";
+      document.getElementById("research-status").textContent = "Your agents are starting…";
+      paintFlags((latest && latest.flags) || []);
+      watchResearch();
+      try {
+        const response = await fetch("/api/research", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Research failed");
+        researchResult = data;
+        paintResearch(data);
+        if ((data.runs || []).length) openReport(0);
+      } catch (error) {
+        document.getElementById("research-error").textContent = error.message;
+      } finally {
+        if (researchPoll) clearInterval(researchPoll);
+        researchPoll = null;
+        researchRunning = false;
+        document.getElementById("research-status").textContent = "";
+        paintTeam({ active: false });
+        paintFlags((latest && latest.flags) || []);
+      }
+    }
+
     const originalRender = render;
     render = function (data) {
       latest = data;
       originalRender(data);
+      paintFlags(data.flags || []);
+      if (researchResult) paintResearch(researchResult);
     };
     document.getElementById("refresh").addEventListener("click", () => load(true));
+    document.getElementById("research-shortlist").addEventListener("click", () => runResearch({ shortlist: true }));
+    document.getElementById("research").addEventListener("click", event => {
+      const open = event.target.closest(".open-report");
+      if (open) {
+        openReport(Number(open.dataset.run));
+        return;
+      }
+      const button = event.target.closest(".research-one");
+      if (!button || button.disabled) return;
+      runResearch({ symbols: [button.dataset.symbol] });
+    });
+    document.getElementById("report-close").addEventListener("click", closeReport);
+    document.getElementById("report-backdrop").addEventListener("click", event => {
+      if (event.target.id === "report-backdrop") closeReport();
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") closeReport();
+    });
     document.getElementById("news-prev").addEventListener("click", () => stepNews(-1));
     document.getElementById("news-next").addEventListener("click", () => stepNews(1));
     const newsCard = document.getElementById("news-card");

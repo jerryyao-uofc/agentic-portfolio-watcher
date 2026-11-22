@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 tracker.log
 *.local.csv
+data/research_memory.json
+secrets/
+.env
